@@ -1,21 +1,20 @@
 // Usage: vselect [OPTION]... FILENAME - select a rectangular area from an image
 //
 // Options:
-//     -f, --format=FORMAT specify an output format
+//     -f FORMAT    specify an output format
 //
 // FILENAME must be an image file or - for stdin
 //
 // FORMAT is any string that can contain the following vars:
-//     %x      left side
-//     %y      top side
-//     %x2     right side
-//     %y2     bottom side
-//     %w      width
-//     %h      height
+//     %l / %x  left side
+//     %t / %y  top side
+//     %r       right side
+//     %b       bottom side
+//     %w       width
+//     %h       height
 //
 // The default format is the default geometry syntax imagemagick uses:
-//     +%x+%y          for points
-//     %wx%h+%x+%y     for rects
+//     %wx%h+%x+%y
 //
 // KEY AND MOUSE BINDINGS
 //
@@ -23,16 +22,15 @@
 // arrow up     zoom in
 // arrow down   zoom out
 // left mouse   select rectangle
-// middle mouse zoom in/out
-// right mouse  move image
+// middle mouse move image
+// right mouse  confirm and exit
 
 // TODO:
-//  - parse arguments
 //  - load image from arguments (and support more than just png)
 //  - output in user-specified format
-//  - handle zoom+offset correctly (it's kind of weird right now)
 //  - display selections going out of bounds correctly
 //  - display x,y,w,h while dragging the rectangle
+//  - handle zoom+offset correctly (it's kind of weird right now)
 //  - decide when to exit the program (confirmation?)
 
 #include <cairo.h>
@@ -41,6 +39,10 @@
 #include <X11/keysym.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+
+#define DEFAULT_FORMAT "%wx%h+%x+%y"
+
 
 // Type definitions
 typedef struct {
@@ -52,7 +54,7 @@ typedef struct {
 } rect_t;
 
 typedef struct {
-    int select_point;
+    char *format;
     char *filename;
 } options_t;
 
@@ -91,13 +93,6 @@ Window create_window(char *name, int width, int height) {
         StructureNotifyMask);
 
     return win;
-}
-
-KeySym get_keysym(XKeyEvent ev) {
-    char buffer[20];
-    KeySym key;
-
-    return XLookupKeysym(&ev, 0);
 }
 
 
@@ -175,15 +170,32 @@ void paint(cairo_surface_t *window, cairo_surface_t *image, state_t state) {
 
 options_t parse_args(int argc, char **argv) {
     options_t opts;
+    opts.format = DEFAULT_FORMAT;
 
-    opts.select_point = 1;
-    opts.filename = "./test.png";
+    int format_flag_encountered = 0;
+
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "-f") == 0) {
+            format_flag_encountered = 1;
+            continue;
+        }
+
+        if (format_flag_encountered) {
+            opts.format = argv[i];
+            format_flag_encountered = 0;
+        } else {
+            opts.filename = argv[i];
+        }
+    }
+
+    if (strlen(opts.filename) == 0) {
+        printf("ERROR: No filename given");
+        exit(1);
+    }
+
     return opts;
 }
 
-/* int to_image_xy(int orig_xy, double zoom_factor, int offset) { */
-/*     return orig_xy * (1 / zoom_factor) - offset; */
-/* } */
 point_t to_image_point(int x, int y, state_t state) {
     point_t p;
 
@@ -238,7 +250,7 @@ int main(int argc, char **argv) {
                 cairo_xlib_surface_set_size(window_surface, ev.xconfigure.width, ev.xconfigure.height);
                 break;
             case KeyPress:
-                switch (get_keysym(ev.xkey)) {
+                switch (XLookupKeysym(&ev.xkey, 0)) {
                     // Press 'q' to quit
                     case XK_q:
                         exit(0);
@@ -260,9 +272,8 @@ int main(int argc, char **argv) {
                 drag_last_y = ev.xbutton.y;
                 break;
             case ButtonRelease:
-                if (ev.xbutton.button == 1) {
-                    if (ev.xbutton.x == drag_start_x && ev.xbutton.y == drag_start_y)
-                        break_from_mainloop = 1;
+                if (ev.xbutton.button == 3) {
+                    break_from_mainloop = 1;
                 }
                 break;
             case MotionNotify:
@@ -272,10 +283,6 @@ int main(int argc, char **argv) {
                     state.sel.end = to_image_point(ev.xmotion.x, ev.xmotion.y, state);
                 }
                 if (ev.xmotion.state & Button2Mask) {
-                    // Button 2: adjust zoom
-                    state.zoom += .1 * (ev.xmotion.y - drag_last_y);
-                }
-                if (ev.xmotion.state & Button3Mask) {
                     // Button 3: adjust offset
                     state.offset.x += ev.xmotion.x - drag_last_x;
                     state.offset.y += ev.xmotion.y - drag_last_y;

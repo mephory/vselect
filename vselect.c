@@ -26,12 +26,10 @@
 // right mouse  confirm and exit
 
 // TODO:
-//  - load image from arguments (and support more than just png)
 //  - output in user-specified format
 //  - display selections going out of bounds correctly
 //  - display x,y,w,h while dragging the rectangle
 //  - handle zoom+offset correctly (it's kind of weird right now)
-//  - decide when to exit the program (confirmation?)
 
 #include <cairo.h>
 #include <cairo-xlib.h>
@@ -40,6 +38,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #define DEFAULT_FORMAT "%wx%h+%x+%y"
 
@@ -62,6 +61,8 @@ typedef struct {
     rect_t sel;
     point_t offset;
     double zoom;
+    int image_width;
+    int image_height;
 } state_t;
 
 
@@ -125,10 +126,33 @@ int getheight(rect_t rect) {
     return abs(rect.end.y - rect.start.y);
 }
 
+cairo_status_t read_image(void *closure, unsigned char *data, unsigned int size) {
+    FILE *f = (FILE *)closure;
+    fread(data, size, 1, f);
+    return CAIRO_STATUS_SUCCESS;
+}
 
+FILE *create_png_stream(char *filename) {
+    char command[500];
+    sprintf(command, "convert %s png:- 2>/dev/null", filename);
+    FILE *f = popen(command, "r");
+    return f;
+}
 
 cairo_surface_t *open_image(char *filename) {
-    return cairo_image_surface_create_from_png(filename);
+    cairo_surface_t *surface;
+    FILE *f = create_png_stream(filename);
+
+    surface = cairo_image_surface_create_from_png_stream(read_image, f);
+
+    if (cairo_surface_status(surface) == CAIRO_STATUS_FILE_NOT_FOUND
+        || cairo_surface_status(surface) == CAIRO_STATUS_READ_ERROR
+        || cairo_surface_status(surface) == CAIRO_STATUS_NO_MEMORY) {
+        fprintf(stderr, "ERROR: Could not open file\n");
+        exit(-1);
+    }
+
+    return surface;
 }
 
 void paint(cairo_surface_t *window, cairo_surface_t *image, state_t state) {
@@ -165,7 +189,6 @@ void paint(cairo_surface_t *window, cairo_surface_t *image, state_t state) {
 
     // free memory
     cairo_destroy(c);
-
 }
 
 options_t parse_args(int argc, char **argv) {
@@ -189,7 +212,7 @@ options_t parse_args(int argc, char **argv) {
     }
 
     if (strlen(opts.filename) == 0) {
-        printf("ERROR: No filename given");
+        printf("ERROR: No filename given\n");
         exit(1);
     }
 
@@ -199,10 +222,73 @@ options_t parse_args(int argc, char **argv) {
 point_t to_image_point(int x, int y, state_t state) {
     point_t p;
 
-    p.x = max(0, x * (1 / state.zoom) - state.offset.x);
-    p.y = max(0, y * (1 / state.zoom) - state.offset.y);
+    p.x = min(state.image_width, max(0, x * (1 / state.zoom) - state.offset.x));
+    p.y = min(state.image_height, max(0, y * (1 / state.zoom) - state.offset.y));
 
     return p;
+}
+
+char *itoa(int n) {
+    char *str = malloc(50);
+    sprintf(str, "%d", n);
+    return str;
+}
+
+char *str_replace(char *orig, char *rep, char *with) {
+    char *result; // the return string
+    char *ins;    // the next insert point
+    char *tmp;    // varies
+    int len_rep;  // length of rep
+    int len_with; // length of with
+    int len_front; // distance between rep and end of last rep
+    int count;    // number of replacements
+
+    if (!orig)
+        return NULL;
+    if (!rep)
+        rep = "";
+    len_rep = strlen(rep);
+    if (!with)
+        with = "";
+    len_with = strlen(with);
+
+    ins = orig;
+    for (count = 0; tmp = strstr(ins, rep); ++count) {
+        ins = tmp + len_rep;
+    }
+
+    // first time through the loop, all the variable are set correctly
+    // from here on,
+    //    tmp points to the end of the result string
+    //    ins points to the next occurrence of rep in orig
+    //    orig points to the remainder of orig after "end of rep"
+    tmp = result = malloc(strlen(orig) + (len_with - len_rep) * count + 1);
+
+    if (!result)
+        return NULL;
+
+    while (count--) {
+        ins = strstr(orig, rep);
+        len_front = ins - orig;
+        tmp = strncpy(tmp, orig, len_front) + len_front;
+        tmp = strcpy(tmp, with) + len_with;
+        orig += len_front + len_rep; // move to next "end of rep"
+    }
+    strcpy(tmp, orig);
+    return result;
+}
+
+void output(state_t state, options_t options) {
+    char *output = malloc(5000);
+
+    strcpy(output, options.format);
+    output = str_replace(output, "\%x", itoa(getx(state.sel)));
+    output = str_replace(output, "\%y", itoa(gety(state.sel)));
+    output = str_replace(output, "\%w", itoa(getwidth(state.sel)));
+    output = str_replace(output, "\%h", itoa(getheight(state.sel)));
+
+    printf("%s\n", output);
+    fflush(stdout);
 }
 
 int main(int argc, char **argv) {
@@ -210,7 +296,6 @@ int main(int argc, char **argv) {
     Window win;
     cairo_surface_t *window_surface;
     cairo_surface_t *image;
-    int width, height;
     options_t options;
     state_t state;
 
@@ -218,21 +303,25 @@ int main(int argc, char **argv) {
     state.zoom = 1.0;
     state.offset.x = 0;
     state.offset.y = 0;
+    state.sel.start.x = 0;
+    state.sel.start.y = 0;
+    state.sel.end.x = 0;
+    state.sel.end.y = 0;
 
     // read command line arguments
     options = parse_args(argc, argv);
 
     // open the image and get the dimensions
     image = open_image(options.filename);
-    width = cairo_image_surface_get_width(image);
-    height = cairo_image_surface_get_height(image);
+    state.image_width = cairo_image_surface_get_width(image);
+    state.image_height = cairo_image_surface_get_height(image);
 
     // initialize and map x window with appropriate size
     initialize_xlib();
-    win = create_window("vselect", width, height);
+    win = create_window("vselect", state.image_width, state.image_height);
     XMapWindow(dpy, win);
     window_surface = cairo_xlib_surface_create(dpy, win,
-        DefaultVisual(dpy, 0), width + 1, height + 1);
+        DefaultVisual(dpy, 0), state.image_width + 1, state.image_height + 1);
 
 
     int drag_start_x, drag_start_y;
@@ -240,70 +329,61 @@ int main(int argc, char **argv) {
     int break_from_mainloop = 0;
 
     while (!break_from_mainloop) {
-        XNextEvent(dpy, &ev);
-        switch (ev.type) {
-            case Expose:
-                if (ev.xexpose.count < 1)
-                    paint(window_surface, image, state);
-                break;
-            case ConfigureNotify:
-                cairo_xlib_surface_set_size(window_surface, ev.xconfigure.width, ev.xconfigure.height);
-                break;
-            case KeyPress:
-                switch (XLookupKeysym(&ev.xkey, 0)) {
-                    // Press 'q' to quit
-                    case XK_q:
-                        exit(0);
-                        break;
-                    // Press 'Up' to zoom in
-                    case XK_Up:
-                        state.zoom += .1;
-                        break;
-                    // Press 'Down' to zoom out
-                    case XK_Down:
-                        state.zoom -= .1;
-                        break;
-                }
-                break;
-            case ButtonPress:
-                drag_start_x = ev.xbutton.x;
-                drag_start_y = ev.xbutton.y;
-                drag_last_x = ev.xbutton.x;
-                drag_last_y = ev.xbutton.y;
-                break;
-            case ButtonRelease:
-                if (ev.xbutton.button == 3) {
-                    break_from_mainloop = 1;
-                }
-                break;
-            case MotionNotify:
-                if (ev.xmotion.state & Button1Mask) {
-                    // Button 1: make selection
-                    state.sel.start = to_image_point(drag_start_x, drag_start_y, state);
-                    state.sel.end = to_image_point(ev.xmotion.x, ev.xmotion.y, state);
-                }
-                if (ev.xmotion.state & Button2Mask) {
-                    // Button 3: adjust offset
-                    state.offset.x += ev.xmotion.x - drag_last_x;
-                    state.offset.y += ev.xmotion.y - drag_last_y;
-                }
+        while (XPending(dpy) > 0) {
+            XNextEvent(dpy, &ev);
+            switch (ev.type) {
+                case ConfigureNotify:
+                    cairo_xlib_surface_set_size(window_surface, ev.xconfigure.width, ev.xconfigure.height);
+                    break;
+                case KeyPress:
+                    switch (XLookupKeysym(&ev.xkey, 0)) {
+                        // Press 'q' to quit
+                        case XK_q:
+                            exit(0);
+                            break;
+                        // Press 'Up' to zoom in
+                        case XK_Up:
+                            state.zoom += .1;
+                            break;
+                        // Press 'Down' to zoom out
+                        case XK_Down:
+                            state.zoom -= .1;
+                            break;
+                    }
+                    break;
+                case ButtonPress:
+                    drag_start_x = ev.xbutton.x;
+                    drag_start_y = ev.xbutton.y;
+                    drag_last_x = ev.xbutton.x;
+                    drag_last_y = ev.xbutton.y;
+                    break;
+                case ButtonRelease:
+                    if (ev.xbutton.button == 3) {
+                        break_from_mainloop = 1;
+                    }
+                    break;
+                case MotionNotify:
+                    if (ev.xmotion.state & Button1Mask) {
+                        // Button 1: make selection
+                        state.sel.start = to_image_point(drag_start_x, drag_start_y, state);
+                        state.sel.end = to_image_point(ev.xmotion.x, ev.xmotion.y, state);
+                    }
+                    if (ev.xmotion.state & Button2Mask) {
+                        // Button 3: adjust offset
+                        state.offset.x += ev.xmotion.x - drag_last_x;
+                        state.offset.y += ev.xmotion.y - drag_last_y;
+                    }
 
-                drag_last_x = ev.xmotion.x;
-                drag_last_y = ev.xmotion.y;
-                break;
+                    drag_last_x = ev.xmotion.x;
+                    drag_last_y = ev.xmotion.y;
+                    break;
+            }
         }
-
-        if (ev.type != 65)
-            paint(window_surface, image, state);
-
-        fflush(stdout);
+        usleep(5000);
+        paint(window_surface, image, state);
     }
 
-    printf("%dx%d+%d+%d",
-        getwidth(state.sel),
-        getheight(state.sel),
-        getx(state.sel),
-        gety(state.sel));
+    output(state, options);
 
     exit(0);
 }

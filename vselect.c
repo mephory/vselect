@@ -118,6 +118,14 @@ int gety(rect_t rect) {
     return min(rect.start.y, rect.end.y);
 }
 
+int getr(rect_t rect) {
+    return max(rect.start.x, rect.end.x);
+}
+
+int getb(rect_t rect) {
+    return max(rect.start.y, rect.end.y);
+}
+
 int getwidth(rect_t rect) {
     return abs(rect.end.x - rect.start.x);
 }
@@ -284,6 +292,10 @@ void output(state_t state, options_t options) {
     strcpy(output, options.format);
     output = str_replace(output, "\%x", itoa(getx(state.sel)));
     output = str_replace(output, "\%y", itoa(gety(state.sel)));
+    output = str_replace(output, "\%l", itoa(getx(state.sel)));
+    output = str_replace(output, "\%t", itoa(gety(state.sel)));
+    output = str_replace(output, "\%r", itoa(getr(state.sel)));
+    output = str_replace(output, "\%b", itoa(getb(state.sel)));
     output = str_replace(output, "\%w", itoa(getwidth(state.sel)));
     output = str_replace(output, "\%h", itoa(getheight(state.sel)));
 

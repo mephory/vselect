@@ -10,13 +10,11 @@ vselect [OPTION]... FILENAME
 
 OPTIONS
     -f FORMAT    specify an output format
-
-FILENAME must be an image file or - for stdin.
 ```
 
 ### Specifying the output format
 The output format can be any string, where the following substrings will be
-replaced by the corresponding values of the selected rectangle:
+replaced by the corresponding value of the selected rectangle:
 ```
     %l / %x  left side
     %t / %y  top side

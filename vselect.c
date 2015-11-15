@@ -3,8 +3,6 @@
 // Options:
 //     -f FORMAT    specify an output format
 //
-// FILENAME must be an image file or - for stdin
-//
 // FORMAT is any string that can contain the following vars:
 //     %l / %x  left side
 //     %t / %y  top side

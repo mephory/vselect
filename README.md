@@ -43,7 +43,7 @@ right mouse  confirm and exit
 
 ### Crop an image
 ```sh
-convert image.png -crop $(vselect image.png) cropped_image.png
+convert image.png -crop $(vselect image.png) +repage cropped_image.png
 ```
 
 ### Draw red rectangle over image

@@ -389,7 +389,7 @@ int main(int argc, char **argv) {
                     break;
             }
         }
-        usleep(5000);
+        usleep(25000);
         paint(window_surface, image, state);
     }
 

@@ -2,6 +2,7 @@
 //
 // Options:
 //     -f FORMAT    specify an output format
+//     -h           print this help
 //
 // FORMAT is any string that can contain the following vars:
 //     %l / %x  left side
@@ -254,6 +255,34 @@ void paint(cairo_surface_t *window, cairo_surface_t *image, state_t state) {
     cairo_destroy(c);
 }
 
+void print_help() {
+    printf("Usage: vselect [OPTION]... FILENAME - select a rectangular area from an image\n");
+    printf("\n");
+    printf("Options:\n");
+    printf("    -f FORMAT    specify an output format\n");
+    printf("    -h / --help  print this help\n");
+    printf("\n");
+    printf("FORMAT is any string that can contain the following vars:\n");
+    printf("    %%l / %%x  left side\n");
+    printf("    %%t / %%y  top side\n");
+    printf("    %%r       right side\n");
+    printf("    %%b       bottom side\n");
+    printf("    %%w       width\n");
+    printf("    %%h       height\n");
+    printf("\n");
+    printf("The default format is the default geometry syntax imagemagick uses:\n");
+    printf("    %%wx%%h+%%x+%%y\n");
+    printf("\n");
+    printf("KEY AND MOUSE BINDINGS\n");
+    printf("\n");
+    printf("q            quit\n");
+    printf("arrow up     zoom in\n");
+    printf("arrow down   zoom out\n");
+    printf("left mouse   select rectangle\n");
+    printf("middle mouse move image\n");
+    printf("right mouse  confirm and exit\n");
+}
+
 options_t parse_args(int argc, char **argv) {
     options_t opts;
     opts.format = DEFAULT_FORMAT;
@@ -261,6 +290,12 @@ options_t parse_args(int argc, char **argv) {
     int format_flag_encountered = 0;
 
     for (int i = 1; i < argc; i++) {
+        // if there -h or --help, then just print usage and exit
+        if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
+            print_help();
+            exit(0);
+        }
+
         if (strcmp(argv[i], "-f") == 0) {
             format_flag_encountered = 1;
             continue;

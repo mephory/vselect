@@ -25,7 +25,6 @@
 // right mouse  confirm and exit
 
 // TODO:
-//  - output in user-specified format
 //  - display selections going out of bounds correctly
 //  - display x,y,w,h while dragging the rectangle
 //  - handle zoom+offset correctly (it's kind of weird right now)

@@ -2,6 +2,7 @@
 //
 // Options:
 //     -f FORMAT    specify an output format
+//     -t TITLE     change window title
 //     -h           print this help
 //
 // FORMAT is any string that can contain the following vars:
@@ -53,6 +54,7 @@ typedef struct {
 typedef struct {
     char *format;
     char *filename;
+    char *window_title;
 } options_t;
 
 typedef struct {
@@ -259,6 +261,7 @@ void print_help() {
     printf("\n");
     printf("Options:\n");
     printf("    -f FORMAT    specify an output format\n");
+    printf("    -t TITLE     change window title\n");
     printf("    -h / --help  print this help\n");
     printf("\n");
     printf("FORMAT is any string that can contain the following vars:\n");
@@ -285,8 +288,10 @@ void print_help() {
 options_t parse_args(int argc, char **argv) {
     options_t opts;
     opts.format = DEFAULT_FORMAT;
+    opts.window_title = "vselect";
 
     int format_flag_encountered = 0;
+    int title_flag_encountered = 0;
 
     for (int i = 1; i < argc; i++) {
         // if there -h or --help, then just print usage and exit
@@ -300,9 +305,17 @@ options_t parse_args(int argc, char **argv) {
             continue;
         }
 
+        if (strcmp(argv[i], "-t") == 0) {
+            title_flag_encountered = 1;
+            continue;
+        }
+
         if (format_flag_encountered) {
             opts.format = argv[i];
             format_flag_encountered = 0;
+        } else if (title_flag_encountered) {
+            opts.window_title = argv[i];
+            title_flag_encountered = 0;
         } else {
             opts.filename = argv[i];
         }
@@ -370,7 +383,7 @@ int main(int argc, char **argv) {
 
     // initialize and map x window with appropriate size
     initialize_xlib();
-    win = create_window("vselect", state.image_width, state.image_height);
+    win = create_window(options.window_title, state.image_width, state.image_height);
     XMapWindow(dpy, win);
     window_surface = cairo_xlib_surface_create(dpy, win,
         DefaultVisual(dpy, 0), state.image_width + 1, state.image_height + 1);

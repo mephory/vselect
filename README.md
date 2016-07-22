@@ -10,6 +10,7 @@ vselect [OPTION]... FILENAME
 
 OPTIONS
     -f FORMAT    specify an output format
+    -f TITLE     change window title
 ```
 
 ### Specifying the output format

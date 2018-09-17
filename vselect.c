@@ -196,9 +196,9 @@ cairo_status_t read_image(void *closure, unsigned char *data, unsigned int size)
 
 FILE *create_png_stream(char *filename) {
     char *command;
-    int size = snprintf(NULL, 0, "convert %s png:- 2>/dev/null", filename);
+    int size = snprintf(NULL, 0, "convert \"%s\" png:- 2>/dev/null", filename);
     command = malloc(size);
-    sprintf(command, "convert %s png:- 2>/dev/null", filename);
+    sprintf(command, "convert \"%s\" png:- 2>/dev/null", filename);
 
     FILE *f = popen(command, "r");
     return f;

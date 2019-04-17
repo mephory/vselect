@@ -220,7 +220,24 @@ cairo_surface_t *open_image(char *filename) {
     return surface;
 }
 
-void paint(cairo_surface_t *window, cairo_surface_t *image, state_t state) {
+char *output_string(state_t state, options_t options) {
+    // TODO: Don't assume that's enough
+    char *output = malloc(5000);
+
+    strcpy(output, options.format);
+    output = str_replace(output, "\%x", itoa(getx(state.sel)));
+    output = str_replace(output, "\%y", itoa(gety(state.sel)));
+    output = str_replace(output, "\%l", itoa(getx(state.sel)));
+    output = str_replace(output, "\%t", itoa(gety(state.sel)));
+    output = str_replace(output, "\%r", itoa(getr(state.sel)));
+    output = str_replace(output, "\%b", itoa(getb(state.sel)));
+    output = str_replace(output, "\%w", itoa(getwidth(state.sel)));
+    output = str_replace(output, "\%h", itoa(getheight(state.sel)));
+
+    return output;
+}
+
+void paint(cairo_surface_t *window, cairo_surface_t *image, state_t state, options_t options) {
     cairo_t *c;
 
     c = cairo_create(window);
@@ -247,6 +264,10 @@ void paint(cairo_surface_t *window, cairo_surface_t *image, state_t state) {
     cairo_set_source_surface(c, highlighted,
         getx(state.sel) + state.offset.x, gety(state.sel) + state.offset.y);
     cairo_paint(c);
+
+    cairo_move_to(c, 10, 10);
+    cairo_set_source_rgb(c, 1, 1, 1);
+    cairo_show_text(c, output_string(state, options));
 
     // draw to actual buffer
     cairo_pop_group_to_source(c);
@@ -339,19 +360,7 @@ point_t to_image_point(int x, int y, state_t state) {
 }
 
 void output(state_t state, options_t options) {
-    // TODO: Don't assume that's enough
-    char *output = malloc(5000);
-
-    strcpy(output, options.format);
-    output = str_replace(output, "\%x", itoa(getx(state.sel)));
-    output = str_replace(output, "\%y", itoa(gety(state.sel)));
-    output = str_replace(output, "\%l", itoa(getx(state.sel)));
-    output = str_replace(output, "\%t", itoa(gety(state.sel)));
-    output = str_replace(output, "\%r", itoa(getr(state.sel)));
-    output = str_replace(output, "\%b", itoa(getb(state.sel)));
-    output = str_replace(output, "\%w", itoa(getwidth(state.sel)));
-    output = str_replace(output, "\%h", itoa(getheight(state.sel)));
-
+    char *output = output_string(state, options);
     printf("%s\n", output);
     fflush(stdout);
 }
@@ -421,6 +430,10 @@ int main(int argc, char **argv) {
                     drag_start_y = ev.xbutton.y;
                     drag_last_x = ev.xbutton.x;
                     drag_last_y = ev.xbutton.y;
+                    if (ev.xbutton.button == 1) {
+                        state.sel.start = to_image_point(drag_start_x, drag_start_y, state);
+                        state.sel.end = to_image_point(drag_start_x, drag_start_y, state);
+                    }
                     break;
                 case ButtonRelease:
                     if (ev.xbutton.button == 3) {
@@ -445,7 +458,7 @@ int main(int argc, char **argv) {
             }
         }
         usleep(25000);
-        paint(window_surface, image, state);
+        paint(window_surface, image, state, options);
     }
 
     output(state, options);
